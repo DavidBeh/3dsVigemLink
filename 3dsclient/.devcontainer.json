@@ -1,0 +1,12 @@
+{
+    "image": "devkitpro/devkitarm",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-vscode.cpptools",
+                "ms-vscode.cpptools-themes",
+                "ms-vscode.makefile-tools"
+            ]
+        }
+    }
+}

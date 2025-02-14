@@ -1,0 +1,5 @@
+*.lst
+3dsclient.3dsx
+3dsclient.elf
+3dsclient.smdh
+build/

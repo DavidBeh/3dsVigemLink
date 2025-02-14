@@ -1,0 +1,23 @@
+{
+    "C_Cpp.default.includePath": [
+        "${default}",
+        "${workspaceFolder}/**",
+       // "/opt/devkitpro/libnds/include/**",
+        "/opt/devkitpro/libctru/include/**",
+        "/opt/devkitpro/devkitARM/include/**",
+        "/opt/devkitpro/devkitARM/arm-none-eabi/include/**"
+    ],
+    "C_Cpp.default.defines": [
+        "ARM9"
+    ],
+    "C_Cpp.default.compilerPath": "/opt/devkitpro/devkitARM/bin/arm-none-eabi-gcc",
+    "C_Cpp.default.intelliSenseMode": "gcc-arm",
+    "files.associations": {
+        "fcntl.h": "c",
+        "socket.h": "c",
+        "3ds.h": "c",
+        "inet.h": "c",
+        "in.h": "c",
+        "alloca.h": "c"
+    },
+}
