@@ -15,12 +15,13 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
-
 #include <3ds.h>
 #define SOC_ALIGN 0x1000
 #define SOC_BUFFERSIZE 0x100000
+#define KEYS_PRESSED(held, keys) (((held) & (keys)) == (keys))
 
-char *ipAddr = "10.149.99.146";
+// char *ipAddr = "10.149.99.146";
+char *ipAddr = "192.168.178.138";
 int port = 12346;
 
 void failExit(const char *fmt, ...);
@@ -87,7 +88,6 @@ int main(int argc, char *argv[])
 
 	// Main loop
 
-
 	bool isOldBufferSet = false;
 	int bufferLen = sizeof(u32) + sizeof(s16) * 4 + sizeof(u32);
 	char *buffer = alloca(bufferLen);
@@ -133,7 +133,7 @@ int main(int argc, char *argv[])
 		int offset = 0;
 
 		// Copy into buffer
-		COPY_INTO(buffer, htonl(kDown), &offset);
+		COPY_INTO(buffer, htonl(kHeld), &offset);
 
 		s16 stickMasks[] = {pos.dx, pos.dy, cstick.dx, cstick.dy};
 		for (int i = 0; i < 4; i++)
@@ -168,11 +168,11 @@ int main(int argc, char *argv[])
 		}
 #pragma endregion Sending Keys
 
-		if (kDown & KEY_START)
+		if (KEYS_PRESSED(kHeld, KEY_START | KEY_L | KEY_R | KEY_DDOWN))
+		{
 			break; // break in order to return to hbmenu
+		}
 
-		
-		
 		gspWaitForVBlank();
 		gfxSwapBuffers();
 	}

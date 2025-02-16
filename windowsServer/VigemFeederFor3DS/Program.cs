@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Net;
 using System.Net.Sockets;
+using System.Numerics;
 using System.Text;
 using Nefarius.ViGEm.Client;
 using Nefarius.ViGEm.Client.Targets;
@@ -9,15 +10,27 @@ using VigemFeederFor3DS;
 
 class Program
 {
-    static void Main()
+    // Converts a short which goes from -140 to 140 to the full short range, then clamps it between short.MinValue and short.MaxValue
+    static void ConvertValue(ref short value)
     {
+        var s1 = Math.Clamp(value, (short)-140, (short)140);
+        var s2 = (short)(s1 * short.MaxValue / 140);
+        value = s2;
+    }
+
+    static void Main(string[] args)
+    {
+        
         // Define the port and IP address to listen on
+        
         int port = 12346;
+        if (args.Length >= 1)
+            int.TryParse(args[0], out port);
         IPAddress ipAddress = IPAddress.Any;
-        var vigem = new ViGEmClient(); 
+        var vigem = new ViGEmClient();
         IXbox360Controller? controller = null;
-        
-        
+
+
         // Create a UDP client
         UdpClient udpClient = new UdpClient(port);
 
@@ -30,60 +43,72 @@ class Program
                 // Receive data
                 IPEndPoint remoteEndPoint = new IPEndPoint(ipAddress, port);
                 byte[] receiveBytes = udpClient.Receive(ref remoteEndPoint);
-                
+
                 if (controller == null)
                 {
                     controller = vigem.CreateXbox360Controller();
-                    controller.Connect();                    
-                    //controller.AutoSubmitReport = true;
-
+                    controller.Connect();
+                    controller.AutoSubmitReport = false;
                 }
-                
-                
 
-                
+
                 // Process received data
-                if (receiveBytes.Length == 24) // Ensure the buffer size matches the expected size
+                if (receiveBytes.Length == 16) // Ensure the buffer size matches the expected size
                 {
                     uint net_kDown = BitConverter.ToUInt32(receiveBytes, 0);
-                    uint net_kHeld = BitConverter.ToUInt32(receiveBytes, 4);
-                    uint net_kUp = BitConverter.ToUInt32(receiveBytes, 8);
-                    short net_pos_dx = BitConverter.ToInt16(receiveBytes, 12);
-                    short net_pos_dy = BitConverter.ToInt16(receiveBytes, 14);
-                    short net_cstick_dx = BitConverter.ToInt16(receiveBytes, 16);
-                    short net_cstick_dy = BitConverter.ToInt16(receiveBytes, 18);
-                    uint net_sequence = BitConverter.ToUInt32(receiveBytes, 20);
+                    short net_pos_dx = BitConverter.ToInt16(receiveBytes, 4);
+                    short net_pos_dy = BitConverter.ToInt16(receiveBytes, 6);
+                    short net_cstick_dx = BitConverter.ToInt16(receiveBytes, 8);
+                    short net_cstick_dy = BitConverter.ToInt16(receiveBytes, 10);
+                    uint net_sequence = BitConverter.ToUInt32(receiveBytes, 12);
+
 
                     // Convert from network byte order to host byte order
                     uint kDown = (uint)IPAddress.NetworkToHostOrder((int)net_kDown);
-                    uint kHeld = (uint)IPAddress.NetworkToHostOrder((int)net_kHeld);
-                    uint kUp = (uint)IPAddress.NetworkToHostOrder((int)net_kUp);
                     short pos_dx = IPAddress.NetworkToHostOrder(net_pos_dx);
                     short pos_dy = IPAddress.NetworkToHostOrder(net_pos_dy);
                     short cstick_dx = IPAddress.NetworkToHostOrder(net_cstick_dx);
                     short cstick_dy = IPAddress.NetworkToHostOrder(net_cstick_dy);
                     uint sequence = (uint)IPAddress.NetworkToHostOrder((int)net_sequence);
                     ushort mask = 0;
-                    foreach (Xbox360Property xbox360Property in ButtonHelper.GetProperties((NKey)kHeld))
+
+
+                    controller.LeftTrigger = 0;
+                    controller.RightTrigger = 0;
+
+                    foreach (Xbox360Property xbox360Property in ButtonHelper.GetProperties((NKey)kDown))
                     {
-                        mask += xbox360Property switch
+                        switch (xbox360Property)
                         {
-                            Xbox360Button button => button.Value,
-                            Xbox360Axis axis => 0,
-                            Xbox360Slider slider => 0,
-                            _ => 0
-                        };
+                            case Xbox360Button button:
+                                mask += button.Value;
+                                break;
+                            case Xbox360Slider slider:
+                                controller.SetSliderValue(slider, byte.MaxValue);
+                                break;
+                        }
                     }
-                    Console.WriteLine($"kDown: {kDown}, kHeld: {kHeld}, kUp: {kUp}");
+
+                    Console.WriteLine($"kDown: {kDown}");
                     Console.WriteLine($"pos_dx: {pos_dx}, pos_dy: {pos_dy}");
                     Console.WriteLine($"cstick_dx: {cstick_dx}, cstick_dy: {cstick_dy}");
                     Console.WriteLine($"Sequence: {sequence}, MAsk: {mask}");
-                    
+
 
                     controller.SetButtonsFull(mask);
+                    
+                    ConvertValue(ref pos_dx);
+                    ConvertValue(ref pos_dy);
+                    ConvertValue(ref cstick_dx);
+                    ConvertValue(ref cstick_dy);
+
+                    controller.SetAxisValue(Xbox360Axis.LeftThumbX, pos_dx);
+                    controller.SetAxisValue(Xbox360Axis.LeftThumbY, pos_dy);
+                    controller.SetAxisValue(Xbox360Axis.RightThumbX, cstick_dx);
+                    controller.SetAxisValue(Xbox360Axis.RightThumbY, cstick_dy);
+                    
                     controller.SubmitReport();
                 }
-                // Print the values
 
                 else
                 {
@@ -93,7 +118,6 @@ class Program
         }
         catch (Exception e)
         {
-
             Console.WriteLine(e.ToString());
         }
         finally
