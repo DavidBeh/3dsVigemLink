@@ -18,6 +18,10 @@
         "3ds.h": "c",
         "inet.h": "c",
         "in.h": "c",
-        "alloca.h": "c"
+        "alloca.h": "c",
+        "time.h": "c",
+        "stdarg.h": "c",
+        "types.h": "c"
     },
+    
 }

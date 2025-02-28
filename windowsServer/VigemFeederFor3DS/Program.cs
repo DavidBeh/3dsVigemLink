@@ -10,6 +10,16 @@ using VigemFeederFor3DS;
 
 class Program
 {
+    
+    public static double InverseLerp(int start, int end, int value, bool clamp = true)
+    {
+        if (clamp)
+        {
+            value = Math.Clamp(value, start, end);
+        }
+        return (double)(value - start) / (end - start);
+    }
+
     // Converts a short which goes from -140 to 140 to the full short range, then clamps it between short.MinValue and short.MaxValue
     static void ConvertValue(ref short value)
     {
@@ -41,7 +51,7 @@ class Program
             while (true)
             {
                 // Receive data
-                IPEndPoint remoteEndPoint = new IPEndPoint(ipAddress, port);
+                IPEndPoint remoteEndPoint = new(ipAddress, port);
                 byte[] receiveBytes = udpClient.Receive(ref remoteEndPoint);
 
                 if (controller == null)
@@ -53,30 +63,37 @@ class Program
 
 
                 // Process received data
-                if (receiveBytes.Length == 16) // Ensure the buffer size matches the expected size
+                if (receiveBytes.Length == 20) // Ensure the buffer size matches the expected size
                 {
                     uint net_kDown = BitConverter.ToUInt32(receiveBytes, 0);
                     short net_pos_dx = BitConverter.ToInt16(receiveBytes, 4);
                     short net_pos_dy = BitConverter.ToInt16(receiveBytes, 6);
                     short net_cstick_dx = BitConverter.ToInt16(receiveBytes, 8);
                     short net_cstick_dy = BitConverter.ToInt16(receiveBytes, 10);
-                    uint net_sequence = BitConverter.ToUInt32(receiveBytes, 12);
+                    short net_touch_x = BitConverter.ToInt16(receiveBytes, 12);
+                    short net_touch_y = BitConverter.ToInt16(receiveBytes, 14);
+                    uint net_sequence = BitConverter.ToUInt32(receiveBytes, 16);
 
 
                     // Convert from network byte order to host byte order
-                    uint kDown = (uint)IPAddress.NetworkToHostOrder((int)net_kDown);
+                    NKey kDown = (NKey) IPAddress.NetworkToHostOrder((int)net_kDown);
                     short pos_dx = IPAddress.NetworkToHostOrder(net_pos_dx);
                     short pos_dy = IPAddress.NetworkToHostOrder(net_pos_dy);
                     short cstick_dx = IPAddress.NetworkToHostOrder(net_cstick_dx);
                     short cstick_dy = IPAddress.NetworkToHostOrder(net_cstick_dy);
+                    short touch_x = IPAddress.NetworkToHostOrder(net_touch_x);
+                    short touch_y = IPAddress.NetworkToHostOrder(net_touch_y);
                     uint sequence = (uint)IPAddress.NetworkToHostOrder((int)net_sequence);
                     ushort mask = 0;
 
+                    double touch_x_norm = InverseLerp(0, 320, touch_x);
+                    double touch_y_norm = InverseLerp(0, 240, touch_y);
 
                     controller.LeftTrigger = 0;
                     controller.RightTrigger = 0;
 
-                    foreach (Xbox360Property xbox360Property in ButtonHelper.GetProperties((NKey)kDown))
+                    
+                    foreach (Xbox360Property xbox360Property in ButtonHelper.GetProperties(kDown))
                     {
                         switch (xbox360Property)
                         {
@@ -88,14 +105,26 @@ class Program
                                 break;
                         }
                     }
-
                     Console.WriteLine($"kDown: {kDown}");
                     Console.WriteLine($"pos_dx: {pos_dx}, pos_dy: {pos_dy}");
                     Console.WriteLine($"cstick_dx: {cstick_dx}, cstick_dy: {cstick_dy}");
+                    Console.WriteLine($"touch_x: {touch_x}, touch_y: {touch_y}");
                     Console.WriteLine($"Sequence: {sequence}, MAsk: {mask}");
 
 
                     controller.SetButtonsFull(mask);
+                    // Set the thumbstick-buttons based on the side of the screen the touch is on
+                    if (kDown.HasFlag(NKey.KEY_TOUCH))
+                    {
+                        if (touch_x_norm < 0.7)
+                        {
+                            controller.SetButtonState(Xbox360Button.LeftThumb, true);
+                        }
+                        if (touch_x_norm > 0.3)
+                        {
+                            controller.SetButtonState(Xbox360Button.RightThumb, true);
+                        }
+                    }
                     
                     ConvertValue(ref pos_dx);
                     ConvertValue(ref pos_dy);
