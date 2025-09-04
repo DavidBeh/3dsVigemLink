@@ -44,8 +44,10 @@
 		(b) = (temp);             \
 	}
 
-char *ipAddr = "10.149.99.146";
-//char *ipAddr = "192.168.178.138";
+char *defaultAddr = "10.149.99.146";
+in_addr_t addr;
+
+// char *defaultAddr = "192.168.178.138";
 int port = 12346;
 #define MICROSECONDS_IN_SECOND 1000000
 
@@ -64,6 +66,7 @@ struct
 {
 	Handle sync;
 	double fps;
+	in_addr_t ip;
 } config = {.fps = 125};
 
 void myThreadFunc(void *arg)
@@ -91,11 +94,16 @@ void myThreadFunc(void *arg)
 	APT_CheckNew3DS((bool *)&isnew3ds);
 
 	printf("Hello From Thread\n");
+	struct sockaddr_in myAddr = {
+					.sin_family = AF_INET,
+					.sin_port = htons(port),
+				};
 	while (!terminate)
 	{
-KEY_A
+
 		svcWaitSynchronization(config.sync, INT64_MAX);
 		s64 fps = config.fps;
+		myAddr.sin_addr.s_addr = config.ip;
 		svcReleaseMutex(config.sync);
 		s64 period_us = (s64)(1000000.0 / fps);
 		clock_gettime(CLOCK_MONOTONIC, frameTime);
@@ -118,7 +126,7 @@ KEY_A
 			{
 				s64 elapsed_us = difftimespec_us(sendTime, oldSendTime);
 				double fps = 1000000.0 / elapsed_us;
-				//printf("FPS: %.5f\n", fps);
+				// printf("FPS: %.5f\n", fps);
 			}
 			swap(sendTime, oldSendTime);
 			isOldSendTimeSet = true;
@@ -136,10 +144,9 @@ KEY_A
 			u32 kHeld = hidKeysHeld(); // For handling user input
 
 			touchPosition touch;
- 
-			//Read the touch screen coordinates
-			hidTouchRead(&touch);
 
+			// Read the touch screen coordinates
+			hidTouchRead(&touch);
 
 			// Circle pad and C-stick
 			circlePosition pos = {0};
@@ -166,15 +173,10 @@ KEY_A
 				seqNr++;
 				COPY_INTO(buffer, htonl(seqNr), &offset);
 
-				//printf("\nkDown: %lu\nkHeld: %lu\nX: %d, Y: %d\n", kDown, kHeld, pos.dx, pos.dy);
+				// printf("\nkDown: %lu\nkHeld: %lu\nX: %d, Y: %d\n", kDown, kHeld, pos.dx, pos.dy);
 
 				// send
-				struct sockaddr_in myAddr = {
-					.sin_family = AF_INET,
-					.sin_addr.s_addr = inet_addr(ipAddr),
-					.sin_port = htons(port),
-				};
-				
+
 
 				int sentBytes = sendto(mysock, buffer, bufferLen, 0, (const struct sockaddr *)&myAddr, sizeof(myAddr));
 
@@ -184,7 +186,6 @@ KEY_A
 				else
 					printf("Failed to send. Error: %i\n", errno);
 				*/
-
 
 				isOldBufferSet = true;
 				swap(buffer, oldBuffer);
@@ -201,6 +202,50 @@ Thread t = 0;
 
 #define STACKSIZE (4 * 1024)
 
+SwkbdState swkbd = {0};
+
+void ask()
+{
+	char initialText[INET_ADDRSTRLEN];
+	memset(initialText, 0, sizeof(initialText));
+	svcWaitSynchronization(config.sync, INT64_MAX);
+	in_addr_t currentAddr = config.ip;
+	svcReleaseMutex(config.sync);
+	inet_ntop(AF_INET, &currentAddr, initialText, sizeof(initialText));
+
+	int maxChars = 4 * 3 + 3;
+	int bufferLen = maxChars * 4 + 1;
+	char buffer[bufferLen];
+	memset(buffer, 0, sizeof(buffer));
+
+	swkbdInit(&swkbd, SWKBD_TYPE_WESTERN, 2, 4 * 3 + 3);
+	swkbdSetInitialText(&swkbd, initialText);
+	SwkbdButton btn = swkbdInputText(&swkbd, buffer, bufferLen);
+
+	in_addr_t newAddr = {0};
+	if (btn == SWKBD_BUTTON_CONFIRM)
+	{
+		if (inet_pton(AF_INET, buffer, &newAddr))
+		{
+			svcWaitSynchronization(config.sync, INT64_MAX);
+			config.ip = currentAddr = newAddr;
+			svcReleaseMutex(config.sync);
+		}
+		else
+		{
+			printf("Ignoring invalid address %s\n", buffer);
+		}
+	} else {
+		printf("Text input aborted. No change\n");
+	}
+
+	SwkbdResult result = swkbdGetResult(&swkbd);
+
+	inet_ntop(AF_INET, &currentAddr, initialText, sizeof(initialText));
+
+	printf("Sending input to %s\n", initialText);
+}
+
 int main(int argc, char *argv[])
 {
 
@@ -208,7 +253,10 @@ int main(int argc, char *argv[])
 	consoleInit(GFX_TOP, NULL);
 	printf("Hello, world!\n");
 
+	inet_pton(AF_INET, defaultAddr, &config.ip);
+	ask();
 	svcCreateMutex(&config.sync, false);
+	
 
 	s32 prio = 0;
 	svcGetThreadPriority(&prio, CUR_THREAD_HANDLE);
@@ -250,9 +298,20 @@ int main(int argc, char *argv[])
 		// printf("FPS: %.2f\n", fps2);
 		hidScanInput();
 
-		if (KEYS_PRESSED(hidKeysHeld(), KEY_START | KEY_L | KEY_R | KEY_DDOWN))
+		u32 keys = hidKeysHeld();
+
+		if (KEYS_PRESSED(keys, KEY_START | KEY_L | KEY_R | KEY_DDOWN))
 		{
+
 			break; // break in order to return to hbmenu
+		}
+
+		if (KEYS_PRESSED(keys, KEY_START | KEY_L | KEY_R | KEY_DRIGHT))
+		{
+			printf("Enter Text:\n");
+			// break;
+			ask();
+			// break in order to return to hbmenu
 		}
 
 		gspWaitForVBlank();
